@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "http:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        "https://api.deepseek.com",
+        "https://api.openai.com",
+        "https://dashscope.aliyuncs.com",
+        "https://api.chatanywhere.tech"
+      ]
+    }
+  ]
+}
