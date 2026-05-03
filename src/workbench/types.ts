@@ -1,6 +1,7 @@
 export interface AttendanceLog {
   start: string
   end?: string
+  blockId?: string
 }
 
 export interface AttendanceDay {
@@ -8,21 +9,44 @@ export interface AttendanceDay {
   leaves: any[]
 }
 
+export type TimeBlockSource =
+  | 'manual'
+  | 'attendance'
+  | 'leave'
+  | 'focus'
+  | 'task-complete'
+
 export interface TimeBlock {
   id: string
   title: string
   start: string
   end: string
   taskId: string
+  sourceType?: TimeBlockSource
+  sourceId?: string
 }
 
 export interface FocusSession {
+  id: string
   date: string
+  start: string
+  end: string
   minutes: number
+  title: string
+  taskId: string
+}
+
+export interface ActiveFocus {
+  mode: 'focus' | 'break'
+  startedAt: number
+  durationSeconds: number
+  taskId: string
+  category: string
+  startTime: string
 }
 
 export interface Focus {
-  active: string | null
+  active: ActiveFocus | null
   sessions: FocusSession[]
 }
 
