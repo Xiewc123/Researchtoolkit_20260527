@@ -474,25 +474,48 @@ onMounted(() => store.loadState())
 .group-head.q3 { background: #eff6ff; border-bottom-color: #dbeafe; }
 .group-head.q4 { background: #f8fafc; }
 .group-list { padding: 0; }
-.task-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #eef2f7; transition: background-color 0.2s; }
+.task-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #eef2f7; transition: background-color 0.2s; min-width: 0;}
 .task-row:last-child { border-bottom: none; }
 .task-row:hover { background-color: #f8fafc; }
 .task-row.completed { color: #94a3b8; }
 .task-row.completed .task-name { color: #94a3b8; text-decoration: line-through; }
-.task-main { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
-.task-name { padding: 0; border: 0; background: transparent; color: #1e293b; font-weight: 600; font-size: 13px; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-name:hover { color: #2f6f84; }
-.task-actions { display: flex; align-items: center; gap: 24px; flex-shrink: 0; }
-.task-meta { display: flex; gap: 16px; color: #64748b; font-size: 12px; }
-.task-meta .meta-project { 
-  width: 40px; /* 增加了宽度，让项目名称显示得更完整 */
-  overflow: hidden; 
-  text-overflow: ellipsis; 
-  white-space: nowrap; 
-  text-align: right; 
+.task-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1 0 30%; 
+    min-width: 0;
 }
-.task-meta .meta-date { width: 80px; text-align: right; }
-.task-meta .urgency { width: 45px; text-align: right; }
+.task-name { flex: 1; padding: 0; border: 0; background: transparent; color: #1e293b; font-weight: 600; font-size: 13px; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-name:hover { color: #2f6f84; }
+.task-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 1 auto; /* 关键：允许增长以填满空间，但不允许收缩到内容以下 */
+    justify-content: flex-end;
+    min-width: 0;
+}
+.task-meta {
+    display: flex;
+    gap: 8px;
+    color: #64748b;
+    font-size: 12px;
+    flex: 1;      /* 让 meta 容器填满可用空间 */
+    min-width: 0; /* 允许缩小 */
+}
+.task-meta .meta-project { 
+    flex: 1 1 100px; /* 关键：允许增长但优先占据150px，必要时可以缩小 */
+    min-width: 40px; /* 给一个最小保底宽度，防止完全消失 */
+    max-width: 300px;
+    overflow: hidden; 
+    text-overflow: ellipsis; 
+    white-space: nowrap; 
+    text-align: left; 
+    margin-left: 8px;
+}
+.task-meta .meta-date { width: 100px; flex-shrink: 0; flex-grow: 0; text-align: right; }
+.task-meta .urgency { width: 50px; flex-shrink: 0; flex-grow: 0; text-align: right; }
 .urgency.warn { color: #92400e; font-weight: bold; }
 .urgency.danger { color: #be123c; font-weight: bold; }
 .empty-mini { padding: 20px 0; text-align: center; color: #94a3b8; font-size: 13px; }
