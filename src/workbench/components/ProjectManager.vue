@@ -331,10 +331,24 @@ const deleteProject = async (projectId: string) => {
 const addNote = async () => {
   const content = noteContent.value.trim()
   if (!content) return
+  
+  const targetProjectId = noteProjectId.value || ''
+  
   await store.updateState((draft) => {
-    draft.projectLogs.unshift({ id: uid('plog'), content, projectId: noteProjectId.value || '', createdAt: dateTimeLabel() })
+    draft.projectLogs.unshift({ 
+      id: uid('plog'), 
+      content, 
+      projectId: targetProjectId, 
+      createdAt: dateTimeLabel() 
+    })
   })
+  
   noteContent.value = ''
+  
+  // 新增：触发同步
+  if (targetProjectId) {
+    await store.syncProjectMarkdown(targetProjectId)
+  }
 }
 
 const openLogDialog = (logId: string) => {
@@ -346,21 +360,41 @@ const openLogDialog = (logId: string) => {
 const saveLog = async () => {
   const content = logForm.content.trim()
   if (!content) return
+  
+  let targetProjectId = ''
+  
   await store.updateState((draft) => {
     const log = draft.projectLogs.find((item) => item.id === editingLogId.value)
     if (log) {
       log.content = content
       log.updatedAt = dateTimeLabel()
+      targetProjectId = log.projectId
     }
   })
   logDialogVisible.value = false
+  
+  // 新增：触发同步
+  if (targetProjectId) {
+    await store.syncProjectMarkdown(targetProjectId)
+  }
 }
 
 const deleteLog = async (logId: string) => {
   await ElMessageBox.confirm('确认删除这条日志？', '删除日志', { type: 'warning' })
+  
+  let targetProjectId = ''
+  
   await store.updateState((draft) => {
+    const log = draft.projectLogs.find(l => l.id === logId)
+    if (log) targetProjectId = log.projectId
+      
     draft.projectLogs = draft.projectLogs.filter((log) => log.id !== logId)
   })
+
+  // 新增：触发同步
+  if (targetProjectId) {
+    await store.syncProjectMarkdown(targetProjectId)
+  }
 }
 
 const resetTaskForm = () => Object.assign(taskForm, { title: '', projectId: currentProjectId.value === 'overview' ? '' : currentProjectId.value, quadrant: 'Q3', status: 'todo', isToday: true, dueDate: todayStr(), group: '默认分组', groupOrder: 0, members: '自己' })
