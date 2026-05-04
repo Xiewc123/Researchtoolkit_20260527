@@ -79,18 +79,26 @@
             </div>
 
             <div class="task-table">
-              <div class="task-head">
-                <span>任务</span><span>项目/分组</span><span>象限</span><span>状态</span><span>截止</span><span></span>
-              </div>
-              <div v-for="task in visibleTasks" :key="task.id" class="task-row" :class="{ completed: task.status === 'done' }">
-                <button class="task-name" @click="openTaskDialog(task.id)">{{ task.title }}</button>
-                <span class="muted">{{ projectName(task.projectId) }} / {{ task.group || '默认分组' }}</span>
-                <span>{{ task.quadrant }}</span>
-                <span class="muted">{{ TASK_STATUS_LABELS[task.status] }}</span>
-                <span class="muted">{{ task.dueDate || '-' }}</span>
-                <el-button link type="danger" size="small" @click="deleteTask(task.id)">删</el-button>
-              </div>
-              <el-empty v-if="!visibleTasks.length" description="暂无任务" />
+              <!-- 按项目/分组进行遍历渲染 -->
+              <template v-if="groupedTasks.length">
+                <div v-for="group in groupedTasks" :key="group.title" class="task-group">
+                  <div class="task-group-title">{{ group.title }}</div>
+                  
+                  <div class="task-head">
+                    <span>任务名称</span><span>状态</span><span>截止日期</span><span></span>
+                  </div>
+                  
+                  <div v-for="task in group.tasks" :key="task.id" 
+                       class="task-row" 
+                       :class="[`quadrant-${task.quadrant}`, { completed: task.status === 'done' }]">
+                    <button class="task-name" @click="openTaskDialog(task.id)">{{ task.title }}</button>
+                    <span class="muted">{{ TASK_STATUS_LABELS[task.status] }}</span>
+                    <span class="muted">{{ task.dueDate || '-' }}</span>
+                    <el-button link type="danger" size="small" @click="deleteTask(task.id)">删除</el-button>
+                  </div>
+                </div>
+              </template>
+              <el-empty v-else description="暂无任务" />
             </div>
           </section>
 
@@ -115,6 +123,7 @@
       </section>
     </div>
 
+    <!-- 各类弹窗保持不变 -->
     <el-dialog v-model="projectDialogVisible" :title="editingProjectId ? '编辑项目' : '新增项目'" width="480px">
       <el-form :model="projectForm" label-width="88px" label-position="left">
         <el-form-item label="项目名称" required><el-input v-model="projectForm.title" /></el-form-item>
@@ -203,15 +212,58 @@ const detailTitle = computed(() => currentProject.value?.title || '项目全局�
 const detailSubtitle = computed(() => currentProject.value ? `${projectTasks.value.length} 条任务` : `${state.value.projects.length} 个项目，${state.value.tasks.length} 条任务`)
 const projectTasks = computed(() => state.value.tasks.filter((task) => task.projectId === currentProjectId.value))
 
-const visibleTasks = computed(() => {
-  const list = currentProjectId.value === 'overview'
-    ? state.value.tasks.filter((task) => !taskProjectFilter.value || task.projectId === taskProjectFilter.value)
-    : projectTasks.value
-  return [...list].sort((a, b) => {
+// 任务基础排序规则提取为共用函数
+const sortTasks = (tasks: Task[]) => {
+  return [...tasks].sort((a, b) => {
     if (a.status === 'done' && b.status !== 'done') return 1
     if (a.status !== 'done' && b.status === 'done') return -1
     return TASK_QUADRANT_RANK[a.quadrant] - TASK_QUADRANT_RANK[b.quadrant] || (a.groupOrder || 0) - (b.groupOrder || 0)
   })
+}
+
+// 核心改动：用 groupedTasks 替换 visibleTasks ，按情景分组展示任务
+const groupedTasks = computed(() => {
+  const groups: { title: string, tasks: Task[] }[] = []
+
+  if (currentProjectId.value === 'overview') {
+    // 【全局概览】：按照项目分栏
+    const noProjectTasks = state.value.tasks.filter(t => !t.projectId && (!taskProjectFilter.value || taskProjectFilter.value === ''))
+    if (noProjectTasks.length) {
+      groups.push({ title: '未关联项目', tasks: sortTasks(noProjectTasks) })
+    }
+
+    const projectsToShow = taskProjectFilter.value
+      ? state.value.projects.filter(p => p.id === taskProjectFilter.value)
+      : state.value.projects
+
+    projectsToShow.forEach(project => {
+      const pTasks = state.value.tasks.filter(t => t.projectId === project.id)
+      if (pTasks.length) {
+        groups.push({ title: project.title, tasks: sortTasks(pTasks) })
+      }
+    })
+  } else {
+    // 【具体项目】：按任务中的 group(分组) 字段分栏
+    const groupMap = new Map<string, Task[]>()
+    projectTasks.value.forEach(task => {
+      const gName = task.group || '默认分组'
+      if (!groupMap.has(gName)) groupMap.set(gName, [])
+      groupMap.get(gName)!.push(task)
+    })
+
+    for (const [title, tasks] of groupMap.entries()) {
+      groups.push({ title, tasks: sortTasks(tasks) })
+    }
+
+    // 依据该分组内任务最小的排序号给整个分组排序
+    groups.sort((a, b) => {
+      const minA = Math.min(...a.tasks.map(t => t.groupOrder || 0))
+      const minB = Math.min(...b.tasks.map(t => t.groupOrder || 0))
+      return minA - minB
+    })
+  }
+
+  return groups
 })
 
 const visibleLogs = computed(() => {
@@ -358,9 +410,7 @@ onMounted(() => store.loadState())
 .project-manager { height: 100%; display: flex; flex-direction: column; gap: 16px; color: #1e293b; }
 .module-header { padding: 24px; background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.5)); border-radius: 16px; border: 1px solid rgba(255,255,255,0.6); box-shadow: 0 10px 30px rgba(0,0,0,0.03); }
 
-/* 这里加入了 flex-wrap: wrap，修复卡片标题堆叠问题 */
 .header-content { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
-
 .title-box { display: flex; align-items: center; gap: 16px; }
 .title-icon { font-size: 32px; color: #2f6f84; background: #fff; padding: 10px; border-radius: 14px; box-shadow: 0 4px 15px rgba(47,111,132,0.15); }
 .title-box h2 { margin: 0; font-size: 22px; font-weight: 700; }
@@ -369,62 +419,116 @@ onMounted(() => store.loadState())
 .status-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .status-item span { font-size: 11px; color: #94a3b8; }
 .status-item strong { font-size: 18px; color: #2f6f84; }
+
 .workspace-grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; min-height: 0; flex: 1; }
 .project-column, .detail-column { background: #fff; border-radius: 16px; padding: 16px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.02); min-height: 0; }
 .project-column { display: flex; flex-direction: column; gap: 12px; }
 .panel-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
 .panel-header.compact { margin: 0; }
 .panel-header h3 { margin: 0; color: #2f6f84; font-size: 15px; }
+
 .overview-button { width: 100%; border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 10px; padding: 10px 12px; text-align: left; font-weight: 700; color: #1e293b; cursor: pointer; }
 .overview-button.active, .project-item.active { border-color: rgba(47,111,132,.35); background: linear-gradient(135deg, rgba(47,111,132,.1), rgba(79,174,217,.05)); }
 .project-list { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; min-height: 120px; }
 .project-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; padding: 9px 12px; cursor: pointer; }
 
-/* 这里新增了给项目列表标题 + 进度的布局样式 */
 .project-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .project-title-row { display: flex; align-items: center; gap: 6px; }
 .project-title-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.task-count { font-style: normal; font-size: 12px; color: #94a3b8; font-family: monospace; white-space: nowrap; }
+.task-count { font-style: normal; font-size: 12px; color: #798089; font-family: monospace; white-space: nowrap; font-weight: 600;}
 .project-info span { font-size: 12px; color: #64748b; }
-
 .project-status { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 5px; font-size: 11px; line-height: 1; border: 1px solid #dbe7ec; color: #64748b; background: #fff; white-space: nowrap; }
 .project-status.done { color: #2f6f84; background: #eefaf4; border-color: #c7ead8; }
+
 .note-box { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
 .detail-column { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
-/* 这里加入了 flex-wrap: wrap，修复操作按钮挤压问题 */
 .detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; flex-wrap: wrap; }
-
 .detail-head h3 { margin: 0; color: #1e293b; font-size: 20px; }
 .detail-head p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
 .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
-/* 移除了原本复杂的动态网格，因为删掉了 Timeline，直接固定为两列分布 */
 .detail-body { display: grid; grid-template-columns: minmax(0px, 1fr) minmax(0, 1fr); gap: 10px; min-height: 0; flex: 1; min-width: 0; }
 .task-section, .log-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; min-height: 0; display: flex; flex-direction: column; min-width: 0; }
 .task-tools { display: flex; gap: 8px; align-items: center; }
 
-/* 移除了 timeline-grid */
-.task-table, .log-list { overflow: auto; min-height: 0; flex: 1; }
+/* ======== 修改的任务卡片样式 ======== */
+.task-table { 
+  overflow: auto; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 12px; 
+}
+.task-group { 
+  display: flex; flex-direction: column; gap: 4px; 
+  width: 100%; 
+  min-width: 340px; /* 关键：网格四列+间隙的最小宽度总和，确保底色永远包裹内容 */
+}
+.task-group-title {
+  position: relative;
+  font-size: 11px;
+  font-weight: 600;
+  color: #708a93;
+  display: inline-block;
+  margin-left: 8px;
+}
 
-.task-head, .task-row { display: grid; grid-template-columns: minmax(160px, 1.5fr) minmax(120px, 1fr) 48px 58px 78px 34px; gap: 8px; align-items: center; }
-.task-head { position: sticky; top: 0; z-index: 1; padding: 6px 8px; background: #eef6f8; color: #64748b; font-size: 11px; font-weight: 700; border-bottom: 1px solid #dbe7ec; }
-.task-row { min-height: 32px; padding: 5px 8px; background: #fff; border-bottom: 1px solid #eef2f7; font-size: 12px; }
-.task-row.completed { color: #94a3b8; }
+.task-group-title::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(to right, #2f6f84, transparent);
+}
+
+/* 卡片栅格重写：改为 4 列 */
+.task-head, .task-row { 
+  display: grid; /* 改为 grid */
+  grid-template-columns: minmax(120px, 1fr) 58px 78px 34px; 
+  gap: 8px; align-items: center; 
+  width: 100%; /* 占满组容器 */
+  box-sizing: border-box;
+}
+.task-head { padding: 4px 10px; color: #94a3b8; font-size: 11px; font-weight: 700; border-bottom: 1px solid #e2e8f0; }
+
+.task-row { min-height: 20px; padding: 2px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.03); font-size: 11px; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.02);}
+.task-row:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.08); }
+
+/* 四象限柔和底色 */
+.task-row.quadrant-Q1 { background-color: #fef2f2; border-color: #fce8e8; } /* 紧急且重要 - 浅红 */
+.task-row.quadrant-Q2 { background-color: #eff6ff; border-color: #e0f2fe; } /* 重要不紧急 - 浅蓝 */
+.task-row.quadrant-Q3 { background-color: #fffbeb; border-color: #fef3c7; } /* 紧急不重要 - 浅黄/橙 */
+.task-row.quadrant-Q4 { background-color: #f8fafc; border-color: #f1f5f9; } /* 不紧急不重要 - 浅灰 */
+
+/* 完成状态视觉置灰 */
+.task-row.completed { filter: grayscale(100%); opacity: 0.6; }
+
+.task-name {
+  font-size: 12px; /* 在这里直接设置你需要的大小 */
+  padding: 0;
+  border: 0;
+}
 .task-name { padding: 0; border: 0; background: transparent; color: #1e293b; font-weight: 700; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-name:hover { color: #2f6f84; text-decoration: underline; }
 .muted { color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-row > *, 
+.task-head > * {
+  min-width: 0;
+}
+
+/* =================================== */
+
+.log-list { overflow: auto; min-height: 0; flex: 1; }
 .log-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
 .log-meta { display: flex; justify-content: space-between; gap: 8px; color: #64748b; font-size: 11px; align-items: center; }
 .log-meta strong { color: #2f6f84; }
 .log-item p { margin: 5px 0 0; white-space: pre-wrap; line-height: 1.5; }
 .full-width { width: 100%; }
 
-/* 精简媒体查询代码 */
 @media (max-width: 800px) { 
   .workspace-grid, .detail-body { grid-template-columns: 1fr; } 
   .task-head { display: none; } 
   .task-row { grid-template-columns: 1fr; } 
   .task-row > *:nth-child(n+2) { display: none; } 
+  .task-group { min-width: 0; } 
 }
 </style>
