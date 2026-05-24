@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Collection, Download, Expand, Fold, Headset, Monitor, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -10,7 +10,6 @@ const router = useRouter()
 const route = useRoute()
 const store = useWorkbenchStore()
 const collapsed = ref(false)
-const fontSize = ref(Number(localStorage.getItem('researchtoolkit.fontSize') || 14))
 const musicUrl = ref('')
 const musicName = ref('')
 const audioRef = ref<HTMLAudioElement | null>(null)
@@ -29,21 +28,20 @@ const handleSelect = (key: string) => {
   router.push(resolveRouteByMenuIndex(key))
 }
 
-watch(fontSize, (value) => {
-  const safe = Math.min(20, Math.max(12, Number(value) || 14))
-  document.documentElement.style.setProperty('--app-font-size', `${safe}px`)
-  localStorage.setItem('researchtoolkit.fontSize', String(safe))
-}, { immediate: true })
-
-const exportData = () => {
-  const payload = JSON.stringify(store.state, null, 2)
-  const blob = new Blob([payload], { type: 'application/json;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `researchtoolkit-data-${new Date().toISOString().slice(0, 10)}.json`
-  link.click()
-  URL.revokeObjectURL(url)
+const exportData = async () => {
+  try {
+    const path = await store.exportStateToFile()
+    ElMessage.success(`数据已导出：${path}`)
+  } catch {
+    const payload = JSON.stringify(store.exportSnapshot(), null, 2)
+    const blob = new Blob([payload], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `researchtoolkit-data-${new Date().toISOString().slice(0, 10)}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 }
 
 const importData = async (event: Event) => {
@@ -125,10 +123,6 @@ onMounted(async () => {
       </el-menu>
 
       <div class="sidebar-tools">
-        <div class="font-tool">
-          <span>字体</span>
-          <el-slider v-model="fontSize" :min="12" :max="20" :show-tooltip="false" size="small" />
-        </div>
         <div class="tool-row">
           <el-button :icon="Upload" size="small" title="导入数据" @click="importInput?.click()" />
           <el-button :icon="Download" size="small" title="导出数据" @click="exportData" />
@@ -153,18 +147,17 @@ onMounted(async () => {
 </template>
 
 <style>
-:root { --app-font-size: 14px; }
 * { box-sizing: border-box; }
-html, body, #app { height: 100%; margin: 0; padding: 0; }
-body { font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; font-size: var(--app-font-size); background: #f4f7fb; }
-.app-container { height: 100%; }
+html, body, #app { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+body { font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; background: #f4f7fb; }
+.app-container { height: 100%; overflow: hidden; }
 .sidebar {
   background: #f8f9fa;
   border-right: 1px solid #e9ecef;
   padding: 1rem 0 5rem;
   position: relative;
   transition: width .2s ease;
-  overflow: hidden;
+  overflow: hidden !important;
 }
 .collapse-toggle {
   position: absolute;
@@ -189,7 +182,7 @@ body { font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei
 .sidebar-status { display:flex; align-items:center; justify-content:space-between; padding:.875rem 1rem; margin:0 1rem 1rem; background:#eef8fb; border:1px solid #cffafe; border-radius:8px; transition: opacity .16s ease; }
 .sidebar-status span { display: block; font-size: .75rem; color: #0369a1; line-height: 1.2; }
 .sidebar-status strong { display: block; margin-top: 4px; color: #1e293b; font-size:.9rem; white-space: nowrap; line-height: 1.2; }
-.nav-menu { border:none; background:transparent; padding:0 .5rem; }
+.nav-menu { border:none; background:transparent; padding:0 .5rem; overflow: hidden; }
 .nav-menu.el-menu--collapse { width: auto; }
 .nav-item { margin:.375rem 0; border-radius:8px; padding:0 .5rem !important; height:58px !important; display:flex !important; align-items:center !important; }
 .nav-item:hover { background: rgba(47,111,132,.08) !important; }
@@ -208,14 +201,23 @@ body { font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei
   border-radius:8px;
   transition: opacity .16s ease, transform .16s ease;
 }
-.font-tool { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 8px; font-size: 12px; color: #64748b; }
-.tool-row { display: flex; gap: 6px; margin-top: 6px; }
+.tool-row { display: flex; gap: 6px; }
 .music-name { display: block; margin-top: 6px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .collapsed .brand-block { justify-content: center; padding: 1rem .75rem; }
 .collapsed .brand-copy, .collapsed .sidebar-status, .collapsed .sidebar-tools { opacity: 0; pointer-events: none; transform: translateX(-8px); }
-.collapsed .nav-menu { padding: 0 .35rem; }
+.collapsed .nav-menu { padding: 0 .35rem; overflow: hidden; }
 .collapsed .nav-item { justify-content: center; height: 48px !important; }
 .collapsed .el-menu-item.is-active { padding-left: calc(.5rem - 3px) !important; }
+.el-popper.is-dark {
+  background: #fff !important;
+  color: #111827 !important;
+  border: 1px solid #dbe7ec !important;
+  box-shadow: 0 2px 8px rgba(15,23,42,.12) !important;
+}
+.el-popper.is-dark .el-popper__arrow::before {
+  background: #fff !important;
+  border: 1px solid #dbe7ec !important;
+}
 .main-content { padding: 20px 24px; overflow: auto; min-width: 0; }
 button, input, textarea, select { font-family: inherit; }
 </style>

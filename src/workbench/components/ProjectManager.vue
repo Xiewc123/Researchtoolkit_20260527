@@ -23,13 +23,16 @@
           <el-button type="primary" size="small" @click="openProjectDialog()">新增项目</el-button>
         </div>
 
+        <el-input v-model="projectRoot" size="small" placeholder="项目全局文件夹，例如 D:\\ResearchLogs" @change="saveProjectRoot" />
+        <el-segmented v-model="projectStatusFilter" :options="projectStatusOptions" size="small" class="project-filter" />
+
         <button class="overview-button" :class="{ active: currentProjectId === 'overview' }" @click="selectProject('overview')">
           项目全局概览
         </button>
 
         <div class="project-list">
           <div
-            v-for="project in state.projects"
+            v-for="project in visibleProjects"
             :key="project.id"
             class="project-item"
             :class="{ active: currentProjectId === project.id }"
@@ -44,7 +47,7 @@
             </div>
             <span class="project-status" :class="project.status">{{ project.status === 'done' ? '已完成' : '进行中' }}</span>
           </div>
-          <el-empty v-if="!state.projects.length" description="暂无项目" />
+          <el-empty v-if="!visibleProjects.length" description="暂无项目" />
         </div>
 
         <div class="note-box">
@@ -117,7 +120,7 @@
       </section>
     </div>
 
-    <el-dialog v-model="projectDialogVisible" :title="editingProjectId ? '编辑项目' : '新增项目'" width="480px">
+    <el-dialog v-model="projectDialogVisible" :title="editingProjectId ? '编辑项目' : '新增项目'" width="520px">
       <el-form :model="projectForm" label-width="88px" label-position="left">
         <el-form-item label="项目名称" required><el-input v-model="projectForm.title" /></el-form-item>
         <el-form-item label="截止日期"><el-date-picker v-model="projectForm.deadline" type="date" value-format="YYYY-MM-DD" class="full-width" /></el-form-item>
@@ -127,7 +130,7 @@
             <el-option label="已完成" value="done" />
           </el-select>
         </el-form-item>
-        <el-form-item label="MD 路径"><el-input v-model="projectForm.mdPath" placeholder="可选，本地 Markdown 文件绝对路径" /></el-form-item>
+        <el-form-item label="MD 路径"><el-input v-model="projectForm.mdPath" placeholder="留空时会在全局文件夹下自动新建" /></el-form-item>
         <el-form-item label="附件路径"><el-input v-model="projectForm.attPath" placeholder="可选，本地附件目录路径" /></el-form-item>
       </el-form>
       <template #footer>
@@ -215,6 +218,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { DataAnalysis, Notebook, Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useWorkbenchStore } from '../../stores/workbench'
@@ -229,6 +233,13 @@ const currentProjectId = ref('overview')
 const noteProjectId = ref('')
 const noteContent = ref('')
 const taskProjectFilter = ref('')
+const projectStatusFilter = ref<'all' | 'active' | 'done'>('active')
+const projectStatusOptions = [
+  { label: '未完成', value: 'active' },
+  { label: '已完成', value: 'done' },
+  { label: '全部', value: 'all' },
+]
+const projectRoot = ref('')
 const projectDialogVisible = ref(false)
 const taskDialogVisible = ref(false)
 const logWindowVisible = ref(false)
@@ -243,6 +254,7 @@ const taskForm = reactive({ title: '', projectId: '', quadrant: 'Q3' as Task['qu
 const logForm = reactive({ projectId: '', createdAt: dateTimeLabel(), content: '' })
 
 const currentProject = computed(() => state.value.projects.find((project) => project.id === currentProjectId.value))
+const visibleProjects = computed(() => state.value.projects.filter((project) => projectStatusFilter.value === 'all' || project.status === projectStatusFilter.value))
 const activeProjectsCount = computed(() => state.value.projects.filter((project) => project.status !== 'done').length)
 const detailTitle = computed(() => currentProject.value?.title || '项目全局概览')
 const detailSubtitle = computed(() => currentProject.value ? `${projectTasks.value.length} 条任务` : `${state.value.projects.length} 个项目，${state.value.tasks.length} 条任务`)
@@ -260,11 +272,9 @@ const groupedTasks = computed(() => {
   if (currentProjectId.value === 'overview') {
     const noProjectTasks = state.value.tasks.filter(t => !t.projectId && !taskProjectFilter.value)
     if (noProjectTasks.length) groups.push({ title: '未关联项目', projectId: '', tasks: sortTasks(noProjectTasks) })
-
     const projectsToShow = taskProjectFilter.value
       ? state.value.projects.filter(p => p.id === taskProjectFilter.value)
       : state.value.projects
-
     projectsToShow.forEach(project => {
       const tasks = state.value.tasks.filter(t => t.projectId === project.id)
       if (tasks.length) groups.push({ title: project.title, projectId: project.id, tasks: sortTasks(tasks) })
@@ -276,9 +286,7 @@ const groupedTasks = computed(() => {
       if (!groupMap.has(groupName)) groupMap.set(groupName, [])
       groupMap.get(groupName)!.push(task)
     })
-    for (const [title, tasks] of groupMap.entries()) {
-      groups.push({ title, projectId: currentProjectId.value, tasks: sortTasks(tasks) })
-    }
+    for (const [title, tasks] of groupMap.entries()) groups.push({ title, projectId: currentProjectId.value, tasks: sortTasks(tasks) })
     groups.sort((a, b) => Math.min(...a.tasks.map(t => t.groupOrder || 0)) - Math.min(...b.tasks.map(t => t.groupOrder || 0)))
   }
   return groups
@@ -294,6 +302,12 @@ const windowLogs = computed(() => {
 watch(currentProjectId, (id) => {
   if (id !== 'overview') noteProjectId.value = id
 })
+
+const saveProjectRoot = async () => {
+  await store.updateState((draft) => {
+    draft.settings.projectRoot = projectRoot.value.trim()
+  })
+}
 
 const selectProject = async (id: string) => {
   currentProjectId.value = id
@@ -319,17 +333,22 @@ const openProjectDialog = (projectId = '') => {
 const saveProject = async () => {
   const title = projectForm.title.trim()
   if (!title) return ElMessage.warning('项目名称不能为空')
+  let mdPath = projectForm.mdPath.trim()
+  if (!editingProjectId.value && !mdPath && projectRoot.value.trim()) {
+    mdPath = await invoke<string>('create_project_markdown', { root: projectRoot.value.trim(), title })
+  }
   await store.updateState((draft) => {
     if (editingProjectId.value) {
       const project = draft.projects.find((item) => item.id === editingProjectId.value)
-      if (project) Object.assign(project, projectForm, { title })
+      if (project) Object.assign(project, projectForm, { title, mdPath })
     } else {
       const project = createProject(title, projectForm.deadline)
-      draft.projects.unshift({ ...project, status: projectForm.status, mdPath: projectForm.mdPath, attPath: projectForm.attPath })
+      draft.projects.unshift({ ...project, status: projectForm.status, mdPath, attPath: projectForm.attPath })
       currentProjectId.value = project.id
       noteProjectId.value = project.id
     }
   })
+  if (mdPath) await store.syncProjectMarkdown(currentProjectId.value)
   projectDialogVisible.value = false
 }
 
@@ -361,12 +380,7 @@ const addNote = async () => {
   const targetProjectId = noteProjectId.value || ''
   if (targetProjectId) await store.importProjectMarkdown(targetProjectId)
   await store.updateState((draft) => {
-    draft.projectLogs.unshift({
-      id: uid('plog'),
-      content,
-      projectId: targetProjectId,
-      createdAt: dateTimeLabel()
-    })
+    draft.projectLogs.unshift({ id: uid('plog'), content, projectId: targetProjectId, createdAt: dateTimeLabel() })
   })
   noteContent.value = ''
   await syncLogProject(targetProjectId)
@@ -412,6 +426,7 @@ const saveLog = async () => {
       previousProjectId = log.projectId || ''
       Object.assign(log, { content, projectId: nextProjectId, createdAt: logForm.createdAt || dateTimeLabel(), updatedAt: dateTimeLabel() })
     } else {
+      draft.projectLogs = draft.projectLogs.filter((item) => !(item.projectId === nextProjectId && formatLogTime(item.createdAt) === formatLogTime(logForm.createdAt)))
       draft.projectLogs.unshift({ id: uid('plog'), content, projectId: nextProjectId, createdAt: logForm.createdAt || dateTimeLabel() })
     }
   })
@@ -471,7 +486,10 @@ const deleteTask = async (taskId: string) => {
   })
 }
 
-onMounted(() => store.loadState())
+onMounted(async () => {
+  await store.loadState()
+  projectRoot.value = state.value.settings.projectRoot || ''
+})
 </script>
 
 <style scoped>
@@ -486,9 +504,10 @@ onMounted(() => store.loadState())
 .status-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .status-item span { font-size: 12px; color: #64748b; }
 .status-item strong { font-size: 18px; color: #2f6f84; }
-.workspace-grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; min-height: 0; flex: 1; }
+.workspace-grid { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; min-height: 0; flex: 1; }
 .project-column, .detail-column { background: #fff; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; min-height: 0; }
 .project-column { display: flex; flex-direction: column; gap: 12px; }
+.project-filter { width: 100%; }
 .panel-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
 .panel-header.compact { margin: 0; }
 .panel-header h3 { margin: 0; color: #2f6f84; font-size: 15px; }

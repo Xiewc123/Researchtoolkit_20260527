@@ -104,6 +104,10 @@ export interface Meeting {
   date: string
 }
 
+export interface WorkbenchSettings {
+  projectRoot: string
+}
+
 export interface WorkbenchState {
   attendance: Record<string, AttendanceDay>
   timeBlocks: Record<string, TimeBlock[]>
@@ -114,5 +118,6 @@ export interface WorkbenchState {
   thesis: Thesis
   meetings: Meeting[]
   projectLogs: any[]
+  settings: WorkbenchSettings
   updatedAt: string
 }

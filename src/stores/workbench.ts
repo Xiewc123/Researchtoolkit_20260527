@@ -23,6 +23,7 @@ const writeBrowserFallback = (state: WorkbenchState) => {
 }
 
 const normalizeDateTime = (value: string) => value.replace('T', ' ').slice(0, 16)
+const logTimeKey = (value: string) => normalizeDateTime(String(value || ''))
 
 const parseProjectMarkdown = (content: string, projectId: string) => {
   const lines = content.replace(/\r\n/g, '\n').split('\n')
@@ -123,7 +124,10 @@ export const useWorkbenchStore = defineStore('workbench', {
     },
 
     async replaceState(raw: unknown) {
-      this.state = normalizeState(raw)
+      const wrapped = raw && typeof raw === 'object' && 'data' in (raw as Record<string, unknown>)
+        ? (raw as Record<string, unknown>).data
+        : raw
+      this.state = normalizeState(wrapped)
       touchState(this.state)
       await this.saveState()
     },
@@ -145,18 +149,13 @@ export const useWorkbenchStore = defineStore('workbench', {
         if (!externalLogs.length) return false
 
         const localOtherLogs = this.state.projectLogs.filter(log => log.projectId !== projectId)
-        const merged = new Map<string, any>()
-
-        for (const log of this.state.projectLogs.filter(log => log.projectId === projectId)) {
-          const key = `${normalizeDateTime(String(log.createdAt || ''))}|${String(log.content || '').trim()}`
-          merged.set(key, log)
-        }
+        const importedByTime = new Map<string, any>()
         for (const log of externalLogs) {
-          const key = `${normalizeDateTime(log.createdAt)}|${log.content.trim()}`
-          if (!merged.has(key)) merged.set(key, log)
+          const key = logTimeKey(log.createdAt)
+          if (key) importedByTime.set(key, log)
         }
 
-        this.state.projectLogs = [...localOtherLogs, ...merged.values()]
+        this.state.projectLogs = [...localOtherLogs, ...importedByTime.values()]
         touchState(this.state)
         await this.saveState()
         return true
@@ -185,6 +184,19 @@ export const useWorkbenchStore = defineStore('workbench', {
         console.error('Failed to sync markdown:', err)
         this.error = `Markdown 同步失败：${project.mdPath}`
       }
+    }
+,
+    exportSnapshot() {
+      return {
+        exportedAt: new Date().toISOString(),
+        version: 1,
+        data: normalizeState(this.state),
+      }
+    },
+
+    async exportStateToFile() {
+      const payload = JSON.stringify(this.exportSnapshot(), null, 2)
+      return await invoke<string>('export_workspace_state_file', { data: payload })
     }
   }
 })

@@ -50,6 +50,9 @@ export const defaultState = (): WorkbenchState => ({
   },
   meetings: [],
   projectLogs: [],
+  settings: {
+    projectRoot: '',
+  },
   updatedAt: dateTimeLabel(),
 })
 
@@ -156,6 +159,9 @@ export const normalizeState = (raw: unknown): WorkbenchState => {
     },
     meetings: Array.isArray(state.meetings) ? state.meetings : [],
     projectLogs: Array.isArray(state.projectLogs) ? state.projectLogs : [],
+    settings: {
+      projectRoot: String(state.settings?.projectRoot || ''),
+    },
     updatedAt: String(state.updatedAt || base.updatedAt),
   }
 }

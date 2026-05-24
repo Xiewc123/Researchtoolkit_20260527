@@ -532,4 +532,17 @@ onMounted(() => store.loadState())
 
 /* 注意这里的修改：移除了原有的 task-board 网格媒体查询，确保整体布局在窄屏上依然正常 */
 @media (max-width: 900px) { .stats-section, .content-section { grid-template-columns: 1fr; } }
+
+.task-board { overflow-x: auto; }
+.task-group { min-width: 760px; }
+.task-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 420px;
+  min-width: 760px;
+}
+.task-main { min-width: 0; }
+.task-actions {
+  min-width: 420px;
+  justify-content: flex-end;
+}
 </style>
