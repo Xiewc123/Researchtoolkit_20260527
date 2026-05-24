@@ -139,7 +139,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Monitor } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { useWorkbenchStore } from '../../stores/workbench'
 import type { ActiveFocus, WorkbenchState } from '../types'
 import { dateTimeLabel, minutesToTime, nowTime, timeToMinutes, todayStr, uid } from '../utils'
@@ -162,6 +162,8 @@ const nowDateText = ref('')
 const nowTimeText = ref('')
 let clockTimer: number | undefined
 let pomoTimer: number | undefined
+let titleTimer: number | undefined
+const originalTitle = document.title
 
 const refreshClock = () => {
   const date = new Date()
@@ -315,9 +317,54 @@ const commitFocus = async (active: ActiveFocus, end = nowTime()) => {
   })
 }
 
+const playDoneSound = () => {
+  const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+  if (!AudioCtx) return
+  const ctx = new AudioCtx()
+  const oscillator = ctx.createOscillator()
+  const gain = ctx.createGain()
+  oscillator.type = 'sine'
+  oscillator.frequency.value = 880
+  gain.gain.setValueAtTime(0.001, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02)
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7)
+  oscillator.connect(gain)
+  gain.connect(ctx.destination)
+  oscillator.start()
+  oscillator.stop(ctx.currentTime + 0.75)
+}
+
+const flashTitle = (text: string) => {
+  if (titleTimer) window.clearInterval(titleTimer)
+  let visible = false
+  titleTimer = window.setInterval(() => {
+    visible = !visible
+    document.title = visible ? text : originalTitle
+  }, 900)
+  window.setTimeout(() => {
+    if (titleTimer) window.clearInterval(titleTimer)
+    titleTimer = undefined
+    document.title = originalTitle
+  }, 12000)
+}
+
+const notifyPomoDone = async (active: ActiveFocus) => {
+  const title = active.mode === 'focus' ? '专注时间结束' : '休息时间结束'
+  const message = active.mode === 'focus' ? '本轮专注已完成，可以休息一下。' : '休息结束，可以回到工作。'
+  playDoneSound()
+  flashTitle(title)
+  ElNotification({ title, message, type: 'success', duration: 0, position: 'top-right' })
+  if ('Notification' in window) {
+    const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission
+    if (permission === 'granted') new Notification(title, { body: message })
+  }
+  ElMessageBox.alert(message, title, { confirmButtonText: '知道了' }).catch(() => {})
+}
+
 const finishActivePomo = async (active: ActiveFocus) => {
   stopPomoTicker()
   if (active.mode === 'focus') await commitFocus(active)
+  await notifyPomoDone(active)
   await wb.updateState((draft) => {
     draft.focus.active = null
   })
@@ -361,6 +408,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (clockTimer) window.clearInterval(clockTimer)
+  if (titleTimer) window.clearInterval(titleTimer)
+  document.title = originalTitle
   stopPomoTicker()
 })
 </script>

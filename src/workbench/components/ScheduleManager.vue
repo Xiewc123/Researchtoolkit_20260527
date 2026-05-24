@@ -197,14 +197,13 @@ import {
   TASK_QUADRANT_LABELS,
   TASK_QUADRANT_RANK,
   TASK_QUADRANTS,
-  TASK_STATUS_LABELS,
   addDurationBlock,
   createTask,
   createTimeBlock,
   getDayBlocks,
   removeTimeBlocksBySource,
 } from '../store'
-import { diffDays, minutesToTime, nowTime, timeMinute, timeToMinutes, todayStr } from '../utils'
+import { diffDays, nowTime, timeMinute, timeToMinutes, todayStr } from '../utils'
 
 const store = useWorkbenchStore()
 const state = computed(() => store.state)

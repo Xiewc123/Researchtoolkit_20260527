@@ -4,6 +4,7 @@ import ScheduleManager from '../workbench/components/ScheduleManager.vue'
 import ProjectManager from '../workbench/components/ProjectManager.vue'
 import TextConvert from '../components/TextConvert.vue'
 import DynastySearch from '../components/DynastySearch.vue'
+import WorldHistoryTimeline from '../components/WorldHistoryTimeline.vue'
 
 const routes = [
   { path: '/', redirect: '/home' },
@@ -11,7 +12,8 @@ const routes = [
   { path: '/schedule', component: ScheduleManager },
   { path: '/project', component: ProjectManager },
   { path: '/convert', component: TextConvert },
-  { path: '/dynasty', component: DynastySearch }
+  { path: '/dynasty', component: DynastySearch },
+  { path: '/history', component: WorldHistoryTimeline }
 ]
 
 export default createRouter({
