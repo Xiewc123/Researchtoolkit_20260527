@@ -370,15 +370,29 @@ const deleteProject = async (projectId: string) => {
   noteProjectId.value = ''
 }
 
+const projectHasMarkdown = (projectId: string) => Boolean(state.value.projects.find((project) => project.id === projectId)?.mdPath)
+
+const ensureLogTargetReady = (projectId: string) => {
+  if (!projectId || projectHasMarkdown(projectId)) return true
+  ElMessage.warning('请先为该项目设置 MD 文件路径，或设置项目全局文件夹后新建项目')
+  return false
+}
+
 const syncLogProject = async (projectId: string) => {
-  if (projectId) await store.syncProjectMarkdown(projectId)
+  if (!projectId || !projectHasMarkdown(projectId)) return
+  try {
+    await store.syncProjectMarkdown(projectId)
+  } catch {
+    ElMessage.warning('日志已保存到工作台，但 Markdown 文件同步失败')
+  }
 }
 
 const addNote = async () => {
   const content = noteContent.value.trim()
   if (!content) return
   const targetProjectId = noteProjectId.value || ''
-  if (targetProjectId) await store.importProjectMarkdown(targetProjectId)
+  if (!ensureLogTargetReady(targetProjectId)) return
+  if (targetProjectId && projectHasMarkdown(targetProjectId)) await store.importProjectMarkdown(targetProjectId)
   await store.updateState((draft) => {
     draft.projectLogs.unshift({ id: uid('plog'), content, projectId: targetProjectId, createdAt: dateTimeLabel() })
   })
@@ -419,7 +433,8 @@ const saveLog = async () => {
   if (!content) return ElMessage.warning('日志内容不能为空')
   let previousProjectId = ''
   const nextProjectId = logForm.projectId || ''
-  if (!editingLogId.value && nextProjectId) await store.importProjectMarkdown(nextProjectId)
+  if (!ensureLogTargetReady(nextProjectId)) return
+  if (!editingLogId.value && nextProjectId && projectHasMarkdown(nextProjectId)) await store.importProjectMarkdown(nextProjectId)
   await store.updateState((draft) => {
     const log = editingLogId.value ? draft.projectLogs.find((item) => item.id === editingLogId.value) : null
     if (log) {
@@ -531,9 +546,9 @@ onMounted(async () => {
 .task-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; min-height: 0; display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .task-tools { display: flex; gap: 8px; align-items: center; }
 .task-table { overflow: auto; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 12px; }
-.task-group { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 520px; }
+.task-group { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 380px; }
 .task-group-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; font-weight: 700; color: #2f6f84; padding: 0 4px; }
-.task-head, .task-row { display: grid; grid-template-columns: minmax(180px, 1fr) 86px 110px 46px; gap: 8px; align-items: center; width: 100%; box-sizing: border-box; }
+.task-head, .task-row { display: grid; grid-template-columns: minmax(140px, 1fr) 64px 86px 40px; gap: 8px; align-items: center; width: 100%; box-sizing: border-box; }
 .task-head { padding: 4px 10px; color: #94a3b8; font-size: 11px; font-weight: 700; border-bottom: 1px solid #e2e8f0; }
 .task-row { min-height: 30px; padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.03); font-size: 12px; transition: all 0.2s; }
 .task-row:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.08); }

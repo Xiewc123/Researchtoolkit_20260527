@@ -132,6 +132,16 @@ export const useWorkbenchStore = defineStore('workbench', {
       await this.saveState()
     },
 
+    async clearAllData() {
+      this.state = defaultState()
+      try {
+        localStorage.removeItem(STORAGE_KEY)
+      } catch {
+        // localStorage may be unavailable in some embedded contexts.
+      }
+      await this.saveState()
+    },
+
     async updateState(updater: (state: WorkbenchState) => void) {
       updater(this.state)
       touchState(this.state)

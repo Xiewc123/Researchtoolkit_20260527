@@ -119,7 +119,7 @@
           <div class="week-labels">
             <span v-for="day in weekLabels" :key="day">{{ day }}</span>
           </div>
-          <div class="heatmap-scroll">
+          <div ref="heatmapScroll" class="heatmap-scroll">
             <div class="month-row">
               <span v-for="month in heatmap.months" :key="`${month.label}-${month.left}`" :style="{ left: `${month.left}px` }">
                 {{ month.label }}
@@ -160,6 +160,7 @@ const state = computed<WorkbenchState>(() => wb.state)
 
 const nowDateText = ref('')
 const nowTimeText = ref('')
+const heatmapScroll = ref<HTMLElement | null>(null)
 let clockTimer: number | undefined
 let pomoTimer: number | undefined
 let titleTimer: number | undefined
@@ -169,6 +170,12 @@ const refreshClock = () => {
   const date = new Date()
   nowDateText.value = date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
   nowTimeText.value = date.toLocaleTimeString('zh-CN')
+}
+
+const scrollHeatmapToLatest = () => {
+  requestAnimationFrame(() => {
+    if (heatmapScroll.value) heatmapScroll.value.scrollLeft = heatmapScroll.value.scrollWidth
+  })
 }
 
 const stats = computed(() => getDashboardStats(state.value))
@@ -402,6 +409,7 @@ onMounted(async () => {
   await wb.loadState()
   refreshClock()
   clockTimer = window.setInterval(refreshClock, 1000)
+  scrollHeatmapToLatest()
   await syncFromActive()
   if (state.value.focus.active) startPomoTicker()
 })

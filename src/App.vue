@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Collection, Download, Expand, Fold, Headset, Monitor, Upload } from '@element-plus/icons-vue'
+import { Collection, Delete, Download, Expand, Fold, Headset, Monitor, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { resolveRouteByMenuIndex, workbenchModules } from './workbench/modules'
 import { useWorkbenchStore } from './stores/workbench'
@@ -58,6 +58,17 @@ const importData = async (event: Event) => {
   } finally {
     if (importInput.value) importInput.value.value = ''
   }
+}
+
+const clearAllData = async () => {
+  await ElMessageBox.confirm('这会清空日程、任务、项目、日志等全部工作台数据。建议先导出备份。确认清空？', '清空所有数据', {
+    type: 'warning',
+    confirmButtonText: '清空',
+    cancelButtonText: '取消',
+    confirmButtonClass: 'el-button--danger',
+  })
+  await store.clearAllData()
+  ElMessage.success('所有工作台数据已清空')
 }
 
 const chooseMusic = (event: Event) => {
@@ -126,6 +137,7 @@ onMounted(async () => {
         <div class="tool-row">
           <el-button :icon="Upload" size="small" title="导入数据" @click="importInput?.click()" />
           <el-button :icon="Download" size="small" title="导出数据" @click="exportData" />
+          <el-button :icon="Delete" size="small" type="danger" plain title="清空所有数据" @click="clearAllData" />
           <el-button :icon="Headset" size="small" :type="musicPlaying ? 'primary' : 'default'" :title="musicName || '选择背景音乐'" @click="toggleMusic" />
         </div>
         <small v-if="musicName" class="music-name">{{ musicName }}</small>
@@ -151,29 +163,8 @@ onMounted(async () => {
 html, body, #app { height: 100%; margin: 0; padding: 0; overflow: hidden; }
 body { font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; background: #f4f7fb; }
 .app-container { height: 100%; overflow: hidden; }
-.sidebar {
-  background: #f8f9fa;
-  border-right: 1px solid #e9ecef;
-  padding: 1rem 0 5rem;
-  position: relative;
-  transition: width .2s ease;
-  overflow: hidden !important;
-}
-.collapse-toggle {
-  position: absolute;
-  left: 1rem;
-  bottom: 1rem;
-  z-index: 2;
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #dbe7ec;
-  background: #fff;
-  color: #2f6f84;
-  border-radius: 8px;
-  cursor: pointer;
-}
+.sidebar { background: #f8f9fa; border-right: 1px solid #e9ecef; padding: 1rem 0 5rem; position: relative; transition: width .2s ease; overflow: hidden !important; }
+.collapse-toggle { position: absolute; left: 1rem; bottom: 1rem; z-index: 2; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid #dbe7ec; background: #fff; color: #2f6f84; border-radius: 8px; cursor: pointer; }
 .brand-block { display: flex; align-items: center; gap: 1rem; padding: 1rem; margin-bottom: .75rem; min-height: 72px; }
 .brand-mark { width: 2.8rem; height: 2.8rem; background: #2f6f84; border-radius: 10px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:1.5rem; flex-shrink: 0; }
 .brand-copy { min-width: 0; opacity: 1; transition: opacity .16s ease; }
@@ -190,34 +181,24 @@ body { font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei
 .nav-copy { display:flex; flex-direction:column; gap:3px; min-width: 0; line-height: 1.15; }
 .nav-copy span { font-size:.9rem; font-weight:700; color:#1e293b; }
 .nav-copy small { font-size:.72rem; color:#64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sidebar-tools {
-  position:absolute;
-  bottom:1rem;
-  left:3.75rem;
-  right:1rem;
-  padding:.75rem;
-  background:#fff;
-  border:1px solid #e2e8f0;
-  border-radius:8px;
-  transition: opacity .16s ease, transform .16s ease;
+.sidebar-tools { position:absolute; bottom:1rem; left:3.75rem; right:1rem; padding:.75rem; background:#fff; border:1px solid #e2e8f0; border-radius:8px; transition: opacity .16s ease, transform .16s ease; }
+.tool-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.tool-row .el-button,
+.tool-row .el-button + .el-button {
+  width: 100%;
+  min-width: 0;
+  margin-left: 0 !important;
+  padding-left: 0;
+  padding-right: 0;
 }
-.tool-row { display: flex; gap: 6px; }
 .music-name { display: block; margin-top: 6px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .collapsed .brand-block { justify-content: center; padding: 1rem .75rem; }
 .collapsed .brand-copy, .collapsed .sidebar-status, .collapsed .sidebar-tools { opacity: 0; pointer-events: none; transform: translateX(-8px); }
 .collapsed .nav-menu { padding: 0 .35rem; overflow: hidden; }
 .collapsed .nav-item { justify-content: center; height: 48px !important; }
 .collapsed .el-menu-item.is-active { padding-left: calc(.5rem - 3px) !important; }
-.el-popper.is-dark {
-  background: #fff !important;
-  color: #111827 !important;
-  border: 1px solid #dbe7ec !important;
-  box-shadow: 0 2px 8px rgba(15,23,42,.12) !important;
-}
-.el-popper.is-dark .el-popper__arrow::before {
-  background: #fff !important;
-  border: 1px solid #dbe7ec !important;
-}
+.el-popper.is-dark { background: #fff !important; color: #111827 !important; border: 1px solid #dbe7ec !important; box-shadow: 0 2px 8px rgba(15,23,42,.12) !important; }
+.el-popper.is-dark .el-popper__arrow::before { background: #fff !important; border: 1px solid #dbe7ec !important; }
 .main-content { padding: 20px 24px; overflow: auto; min-width: 0; }
 button, input, textarea, select { font-family: inherit; }
 </style>

@@ -534,15 +534,15 @@ onMounted(() => store.loadState())
 @media (max-width: 900px) { .stats-section, .content-section { grid-template-columns: 1fr; } }
 
 .task-board { overflow-x: auto; }
-.task-group { min-width: 760px; }
+.task-group { min-width: 480px; }
 .task-row {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 420px;
-  min-width: 760px;
+  grid-template-columns: minmax(170px, 1fr) 240px;
+  min-width: 480px;
 }
 .task-main { min-width: 0; }
 .task-actions {
-  min-width: 420px;
+  min-width: 240px;
   justify-content: flex-end;
 }
 </style>
