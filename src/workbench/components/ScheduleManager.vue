@@ -53,31 +53,19 @@
               <span>{{ TASK_QUADRANT_LABELS[group.quadrant].replace(`${group.quadrant} `, '') }}</span>
               <em>{{ group.tasks.length }}</em>
             </div>
-            
+
             <div class="group-list">
               <div v-for="task in group.tasks" :key="task.id" class="task-row" :class="{ completed: task.status === 'done' }">
-                <!-- 左侧：状态与名称 -->
                 <div class="task-main">
                   <el-checkbox :model-value="task.status === 'done'" @change="toggleTaskDone(task.id)" />
-                  <el-tooltip 
-                    effect="light" 
-                    :content="task.title" 
-                    placement="top-start" 
-                    :show-after="50"
-                  >
+                  <el-tooltip effect="light" :content="task.title" placement="top-start" :show-after="50">
                     <button class="task-name" @click="openTaskDialog(task.id)">{{ task.title }}</button>
                   </el-tooltip>
                 </div>
-                
-                <!-- 右侧：元数据与操作 -->
+
                 <div class="task-actions">
                   <div class="task-meta">
-                    <el-tooltip 
-                      effect="light" 
-                      :content="projectName(task.projectId)" 
-                      placement="top" 
-                      :show-after="50"
-                    >
+                    <el-tooltip effect="light" :content="projectName(task.projectId)" placement="top" :show-after="50">
                       <span class="meta-project">{{ projectName(task.projectId) }}</span>
                     </el-tooltip>
                     <span class="meta-date">{{ task.dueDate || '-' }}</span>
@@ -96,7 +84,7 @@
         <div class="panel-header">
           <h3>今日日程</h3>
           <div class="timeline-tools">
-            <el-date-picker v-model="timelineDate" type="date" value-format="YYYY-MM-DD" size="small" style="width: 100px;" />
+            <el-date-picker v-model="timelineDate" type="date" value-format="YYYY-MM-DD" size="small" style="width: 120px;" />
             <el-button size="small" @click="timelineDate = todayStr()">回到今日</el-button>
             <el-button type="primary" size="small" @click="openBlockDialog()">新增</el-button>
           </div>
@@ -109,8 +97,7 @@
               <el-tooltip effect="light" :content="block.title" placement="top-start" :show-after="50">
                 <strong>{{ block.title }}</strong>
               </el-tooltip>
-              
-              <el-tooltip v-if="block.taskId && !block.title.startsWith('完成任务：')" effect="light" :content="'任务：' + taskName(block.taskId)" placement="top-start" :show-after="50">
+              <el-tooltip v-if="block.taskId && !isTaskCompleteBlock(block)" effect="light" :content="`任务：${taskName(block.taskId)}`" placement="top-start" :show-after="50">
                 <span>任务：{{ taskName(block.taskId) }}</span>
               </el-tooltip>
             </div>
@@ -169,8 +156,14 @@
 
     <el-dialog v-model="blockDialogVisible" :title="editingBlockId ? '编辑时间块' : '新增时间块'" width="480px">
       <el-form :model="blockForm" label-width="88px" label-position="left">
-        <el-form-item label="开始时间"><el-time-picker v-model="blockForm.start" value-format="HH:mm" format="HH:mm" class="full-width" /></el-form-item>
-        <el-form-item label="结束时间"><el-time-picker v-model="blockForm.end" value-format="HH:mm" format="HH:mm" class="full-width" /></el-form-item>
+        <el-form-item label="开始时间">
+          <el-time-select v-model="blockForm.start" start="00:00" end="23:55" step="00:05" class="full-width" />
+        </el-form-item>
+        <el-form-item label="日程时长">
+          <el-select v-model="blockForm.durationMinutes" class="full-width">
+            <el-option v-for="option in durationOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="关联任务">
           <el-select v-model="blockForm.taskId" clearable placeholder="可选">
             <el-option label="不关联任务" value="" />
@@ -203,7 +196,7 @@ import {
   getDayBlocks,
   removeTimeBlocksBySource,
 } from '../store'
-import { diffDays, nowTime, timeMinute, timeToMinutes, todayStr } from '../utils'
+import { diffDays, minutesToTime, nowTime, timeMinute, timeToMinutes, todayStr } from '../utils'
 
 const store = useWorkbenchStore()
 const state = computed(() => store.state)
@@ -229,7 +222,16 @@ const taskForm = reactive({
   dueDate: todayStr(),
 })
 
-const blockForm = reactive({ title: '', start: '09:00', end: '09:30', taskId: '' })
+const blockForm = reactive({ title: '', start: '09:00', durationMinutes: 30, taskId: '' })
+const durationOptions = Array.from({ length: 16 }, (_, index) => {
+  const value = (index + 1) * 15
+  const hours = Math.floor(value / 60)
+  const minutes = value % 60
+  return {
+    value,
+    label: hours ? `${hours}小时${minutes ? `${minutes}分` : ''}` : `${minutes}分钟`,
+  }
+})
 
 const activeProjectsCount = computed(() => state.value.projects.filter((project) => project.status !== 'done').length)
 const activeTasksCount = computed(() => state.value.tasks.filter((task) => task.status !== 'done').length)
@@ -259,12 +261,9 @@ const filteredTasks = computed(() => {
 })
 
 const groupedTasks = computed(() => {
-  // 1. 确定需要展示的象限数组
   const displayQuadrants = TASK_QUADRANTS.includes(taskViewFilter.value as Task['quadrant'])
-    ? [taskViewFilter.value as Task['quadrant']] // 如果筛选了具体象限(如Q1)，数组里就只放这一个
-    : TASK_QUADRANTS;                            // 如果是"显示全部"或"今日执行"，则保留所有四个象限
-
-  // 2. 映射生成最终的数据结构
+    ? [taskViewFilter.value as Task['quadrant']]
+    : TASK_QUADRANTS
   return displayQuadrants.map((quadrant) => ({
     quadrant,
     tasks: filteredTasks.value.filter((task) => task.quadrant === quadrant),
@@ -276,20 +275,13 @@ const activeTaskOptions = computed(() => state.value.tasks.filter((task) => task
 const projectName = (id: string) => state.value.projects.find((project) => project.id === id)?.title || '无项目'
 const taskName = (id: string) => state.value.tasks.find((task) => task.id === id)?.title || '未知任务'
 
+const isTaskCompleteBlock = (block: TimeBlock) =>
+  block.title.startsWith('完成任务：') && (timeToMinutes(block.end) - timeToMinutes(block.start) <= 1)
+
 const blockRange = (block: TimeBlock) => {
   const start = timeMinute(block.start)
   const end = timeMinute(block.end)
-  
-  // 判断是否是直接勾选完成的任务（标题带"完成任务："，且时间差在1分钟以内）
-  const isInstantComplete = 
-    block.title.startsWith('完成任务：') && 
-    (timeToMinutes(block.end) - timeToMinutes(block.start) <= 1)
-
-  // 如果没有结束时间、起止时间相同，或者是瞬间完成的任务，就只显示单个时间点
-  if (!end || end === start || isInstantComplete) {
-    return start
-  }
-  
+  if (!end || end === start || isTaskCompleteBlock(block)) return start
   return `${start}-${end}`
 }
 
@@ -365,7 +357,6 @@ const toggleTaskDone = async (taskId: string) => {
       return
     }
     const end = nowTime()
-    // 将 start 改为直接等于 end（如果没有提前记录开始时间的话）
     const start = task.activeStart || end
     task.status = 'done'
     task.activeStart = null
@@ -383,10 +374,31 @@ const deleteTask = async (taskId: string) => {
   })
 }
 
+const roundUpToFiveMinutes = (time: string) => {
+  const minutes = timeToMinutes(time)
+  return minutesToTime(Math.min(23 * 60 + 55, Math.ceil(minutes / 5) * 5))
+}
+
+const durationFromBlock = (block?: TimeBlock) => {
+  if (!block?.start || !block?.end) return 30
+  const diff = timeToMinutes(block.end) - timeToMinutes(block.start)
+  if (diff <= 0) return 30
+  return Math.max(15, Math.min(240, Math.round(diff / 15) * 15))
+}
+
 const openBlockDialog = (blockId = '') => {
   editingBlockId.value = blockId
   const block = getDayBlocks(state.value, timelineDate.value).find((item) => item.id === blockId)
-  Object.assign(blockForm, block || { title: '', start: '09:00', end: '09:30', taskId: '' })
+  if (block) {
+    Object.assign(blockForm, {
+      title: block.title,
+      start: timeMinute(block.start),
+      durationMinutes: durationFromBlock(block),
+      taskId: block.taskId,
+    })
+  } else {
+    Object.assign(blockForm, { title: '', start: roundUpToFiveMinutes(nowTime()), durationMinutes: 30, taskId: '' })
+  }
   blockDialogVisible.value = true
 }
 
@@ -394,14 +406,16 @@ const saveBlock = async () => {
   let title = blockForm.title.trim()
   if (!title && blockForm.taskId) title = taskName(blockForm.taskId)
   if (!title) return ElMessage.warning('请填写日程名称或选择关联任务')
-  if (timeToMinutes(blockForm.end) <= timeToMinutes(blockForm.start)) return ElMessage.warning('结束时间必须晚于开始时间')
+  const endMinutes = timeToMinutes(blockForm.start) + blockForm.durationMinutes
+  if (endMinutes > 24 * 60) return ElMessage.warning('日程结束时间不能超过当天 24:00')
+  const end = minutesToTime(endMinutes)
   await store.updateState((draft) => {
     const blocks = getDayBlocks(draft, timelineDate.value)
     if (editingBlockId.value) {
       const block = blocks.find((item) => item.id === editingBlockId.value)
-      if (block) Object.assign(block, { ...blockForm, title })
+      if (block) Object.assign(block, { title, start: blockForm.start, end, taskId: blockForm.taskId })
     } else {
-      blocks.push(createTimeBlock(title, blockForm.start, blockForm.end, blockForm.taskId))
+      blocks.push(createTimeBlock(title, blockForm.start, end, blockForm.taskId))
     }
   })
   blockDialogVisible.value = false
@@ -421,15 +435,15 @@ onMounted(() => store.loadState())
 
 <style scoped>
 .schedule-manager { height: 100%; display: flex; flex-direction: column; gap: 16px; color: #1e293b; }
-.module-header { padding: 24px; background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.5)); border-radius: 16px; border: 1px solid rgba(255,255,255,0.6); box-shadow: 0 10px 30px rgba(0,0,0,0.03); }
+.module-header { padding: 24px; background: rgba(255,255,255,0.86); border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,0.03); }
 .header-content { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .title-box { display: flex; align-items: center; gap: 16px; }
-.title-icon { font-size: 32px; color: #2f6f84; background: #fff; padding: 10px; border-radius: 14px; box-shadow: 0 4px 15px rgba(47,111,132,0.15); }
+.title-icon { font-size: 32px; color: #2f6f84; background: #fff; padding: 10px; border-radius: 10px; box-shadow: 0 4px 15px rgba(47,111,132,0.15); }
 .title-box h2 { margin: 0; font-size: 22px; font-weight: 700; }
-.title-box p { margin: 4px 0 0; font-size: 11px; color: #94a3b8; letter-spacing: 1px; }
+.title-box p { margin: 4px 0 0; font-size: 12px; color: #64748b; }
 .status-board { display: flex; gap: 24px; }
 .status-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.status-item span { font-size: 11px; color: #94a3b8; }
+.status-item span { font-size: 12px; color: #64748b; }
 .status-item strong { font-size: 18px; color: #2f6f84; }
 .stats-section { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .stat-card { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; }
@@ -437,33 +451,13 @@ onMounted(() => store.loadState())
 .stat-card span { color: #64748b; font-size: 12px; }
 .stat-card strong { color: #2f6f84; font-size: 20px; }
 .content-section { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr); gap: 16px; flex: 1; min-height: 0; }
-.task-panel, .timeline-panel { background: #fff; border-radius: 16px; padding: 16px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.02); min-height: 0; display: flex; flex-direction: column; }
+.task-panel, .timeline-panel { background: #fff; border-radius: 12px; padding: 16px; border: 1px solid #e2e8f0; min-height: 0; display: flex; flex-direction: column; }
 .panel-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
 .panel-header h3 { margin: 0; color: #2f6f84; font-size: 15px; }
 .quick-add { margin-bottom: 4px; }
 .filter-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
-
-/* ======== 修改部分：任务面板 (横向伸展竖向排列) ======== */
-.task-board { 
-  flex: 1; 
-  min-height: 0; 
-  overflow-y: auto; 
-  overflow-x: auto; /* 开启横向滚动 */
-  display: flex; 
-  flex-direction: column; 
-  gap: 16px; 
-  padding-right: 4px; 
-  padding-bottom: 8px; /* 给可能出现的横向滚动条留出空间 */
-}
-.task-group { 
-  min-width: 340px; /* 关键：小于这个宽度就出现横向滚动条 */
-  border: 1px solid #e2e8f0; 
-  border-radius: 10px; 
-  background: #fff; 
-  display: flex; 
-  flex-direction: column; 
-  flex-shrink: 0; 
-}
+.task-board { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 4px; padding-bottom: 8px; }
+.task-group { min-width: 480px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; display: flex; flex-direction: column; flex-shrink: 0; }
 .group-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #e2e8f0; }
 .group-head strong { color: #1e293b; font-size: 14px; }
 .group-head span { color: #64748b; font-size: 13px; flex: 1; }
@@ -473,53 +467,22 @@ onMounted(() => store.loadState())
 .group-head.q3 { background: #eff6ff; border-bottom-color: #dbeafe; }
 .group-head.q4 { background: #f8fafc; }
 .group-list { padding: 0; }
-.task-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #eef2f7; transition: background-color 0.2s; min-width: 0;}
+.task-row { display: grid; grid-template-columns: minmax(170px, 1fr) 240px; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #eef2f7; transition: background-color 0.2s; min-width: 480px; }
 .task-row:last-child { border-bottom: none; }
 .task-row:hover { background-color: #f8fafc; }
 .task-row.completed { color: #94a3b8; }
 .task-row.completed .task-name { color: #94a3b8; text-decoration: line-through; }
-.task-main {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex: 1 0 30%; 
-    min-width: 0;
-}
+.task-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .task-name { flex: 1; padding: 0; border: 0; background: transparent; color: #1e293b; font-weight: 600; font-size: 13px; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-name:hover { color: #2f6f84; }
-.task-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 0 1 auto; /* 关键：允许增长以填满空间，但不允许收缩到内容以下 */
-    justify-content: flex-end;
-    min-width: 0;
-}
-.task-meta {
-    display: flex;
-    gap: 8px;
-    color: #64748b;
-    font-size: 12px;
-    flex: 1;      /* 让 meta 容器填满可用空间 */
-    min-width: 0; /* 允许缩小 */
-}
-.task-meta .meta-project { 
-    flex: 1 1 100px; /* 关键：允许增长但优先占据150px，必要时可以缩小 */
-    min-width: 40px; /* 给一个最小保底宽度，防止完全消失 */
-    max-width: 300px;
-    overflow: hidden; 
-    text-overflow: ellipsis; 
-    white-space: nowrap; 
-    text-align: left; 
-    margin-left: 8px;
-}
-.task-meta .meta-date { width: 100px; flex-shrink: 0; flex-grow: 0; text-align: right; }
-.task-meta .urgency { width: 50px; flex-shrink: 0; flex-grow: 0; text-align: right; }
+.task-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; min-width: 240px; }
+.task-meta { display: flex; gap: 8px; color: #64748b; font-size: 12px; flex: 1; min-width: 0; }
+.task-meta .meta-project { flex: 1 1 80px; min-width: 36px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.task-meta .meta-date { width: 80px; flex-shrink: 0; text-align: right; }
+.task-meta .urgency { width: 38px; flex-shrink: 0; text-align: right; }
 .urgency.warn { color: #92400e; font-weight: bold; }
 .urgency.danger { color: #be123c; font-weight: bold; }
 .empty-mini { padding: 20px 0; text-align: center; color: #94a3b8; font-size: 13px; }
-/* ======== 修改部分结束 ======== */
-
 .timeline-list { flex: 1; overflow: auto; min-height: 0; }
 .timeline-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .timeline-item { display: grid; grid-template-columns: 96px minmax(0, 1fr) 54px; gap: 10px; align-items: center; padding: 7px 8px; border-bottom: 1px solid #eef2f7; font-size: 12px; }
@@ -529,20 +492,5 @@ onMounted(() => store.loadState())
 .timeline-main span { display: block; color: #64748b; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .timeline-actions { display: flex; justify-content: flex-end; }
 .full-width { width: 100%; }
-
-/* 注意这里的修改：移除了原有的 task-board 网格媒体查询，确保整体布局在窄屏上依然正常 */
 @media (max-width: 900px) { .stats-section, .content-section { grid-template-columns: 1fr; } }
-
-.task-board { overflow-x: auto; }
-.task-group { min-width: 480px; }
-.task-row {
-  display: grid;
-  grid-template-columns: minmax(170px, 1fr) 240px;
-  min-width: 480px;
-}
-.task-main { min-width: 0; }
-.task-actions {
-  min-width: 240px;
-  justify-content: flex-end;
-}
 </style>
